@@ -64,6 +64,10 @@ func (that *Logger) write(lv Level, data string) {
 	buf.buffer = append(buf.buffer, that.prefix(DefaultDepth, DefaultDepth, lv).Bytes()...)
 	buf.buffer = append(buf.buffer, data...)
 
+	if buf.buffer[len(buf.buffer)-1] != '\n' {
+		buf.buffer = append(buf.buffer, '\n')
+	}
+
 	that.lock.Lock()
 	that.handler.Write(buf.buffer)
 	that.lock.Unlock()
@@ -83,6 +87,10 @@ func (that *Logger) writeStack(depthStart, depthEnd int, lv Level, data string) 
 
 	buf.buffer = append(buf.buffer, that.prefix(depthStart, depthEnd, lv).Bytes()...)
 	buf.buffer = append(buf.buffer, data...)
+
+	if buf.buffer[len(buf.buffer)-1] != '\n' {
+		buf.buffer = append(buf.buffer, '\n')
+	}
 
 	that.lock.Lock()
 	that.handler.Write(buf.buffer)
