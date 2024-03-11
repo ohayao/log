@@ -1,7 +1,9 @@
 package log
 
 import (
-	"github.com/fatih/color"
+	"fmt"
+
+	"github.com/muesli/termenv"
 )
 
 type Level int
@@ -52,15 +54,15 @@ var (
 	}
 )
 
-var colors = map[Level]func(a ...any) string{
-	LevelInfo:  color.New(color.BgHiGreen).SprintFunc(),
-	LevelWarn:  color.New(color.BgHiYellow).SprintFunc(),
-	LevelError: color.New(color.BgHiRed).SprintFunc(),
-	LevelStack: color.New(color.BgHiCyan).SprintFunc(),
-	LevelDebug: color.New(color.BgHiBlue).SprintFunc(),
-	LevelFatal: color.New(color.BgHiRed).SprintFunc(),
-	LevelPanic: color.New(color.BgHiRed).SprintFunc(),
-	LevelPrint: color.New(color.BgHiMagenta).SprintFunc(),
+var colors = map[Level][2]func(a ...any) string{
+	LevelInfo:  {ANSIColor("", "#0b64ff", true, false), ANSIColor("", "#636363", false, false)},
+	LevelWarn:  {ANSIColor("", "#edd200", true, false), ANSIColor("", "#636363", false, false)},
+	LevelError: {ANSIColor("#f9ff83", "#f00", true, false), ANSIColor("", "#f00", false, false)},
+	LevelStack: {ANSIColor("", "#ed1ffd", true, false), ANSIColor("", "#636363", false, false)},
+	LevelDebug: {ANSIColor("", "#00e5ff", true, false), ANSIColor("", "#636363", false, false)},
+	LevelFatal: {ANSIColor("#f9ff83", "#f00", true, false), ANSIColor("", "#f00", false, false)},
+	LevelPanic: {ANSIColor("#f9ff83", "#f00", true, false), ANSIColor("", "#f00", false, false)},
+	LevelPrint: {ANSIColor("", "#31b5ff", true, false), ANSIColor("", "#636363", false, false)},
 }
 
 type ILogger interface {
@@ -103,4 +105,20 @@ type ILogger interface {
 type IHandler interface {
 	Write(b []byte) (n int, err error)
 	Close() error
+}
+
+func ANSIColor(background, foreground string, bold, blink bool) func(a ...any) string {
+	b := termenv.ANSI.Color(background)
+	f := termenv.ANSI.Color(foreground)
+	return func(a ...any) string {
+		style := termenv.String(fmt.Sprint(a...))
+		style = style.Background(b).Foreground(f)
+		if bold {
+			style = style.Bold()
+		}
+		if blink {
+			style = style.Blink()
+		}
+		return style.String()
+	}
 }

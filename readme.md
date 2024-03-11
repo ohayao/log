@@ -1,6 +1,8 @@
 # log
 > a golang log library
 
+![示例](docs/example.png)
+
 ## Features
 - `interface` 接口化，支持扩展
 - `console` 支持控制台

@@ -43,8 +43,15 @@ func (that *Logger) SetFlags(flags ...Flag) {
 func (that *Logger) SetLevels(levels ...Level) {
 	that.lock.Lock()
 	defer that.lock.Unlock()
+	isStackMark := false
 	for _, lv := range levels {
 		that.level = that.level | int(lv)
+		if !isStackMark && (lv == LevelStack || lv == LevelFatal || lv == LevelPanic || that.level&int(LevelStack) > 0 || that.level&int(LevelFatal) > 0 || that.level&int(LevelPanic) > 0) {
+			isStackMark = !isStackMark
+			if !(that.flag&int(FlagShortFile) > 0 || that.flag&int(FlagLongFile) > 0) {
+				that.flag = that.flag | int(FlagShortFile)
+			}
+		}
 	}
 }
 
@@ -57,12 +64,19 @@ func (that *Logger) LevelRename(lv Level, newName string) {
 
 // write
 func (that *Logger) write(lv Level, data string) {
+	if that.level&int(lv) < 1 {
+		return
+	}
 	buf := that.buff.Get().(*writeBuffer)
 	buf.buffer = buf.buffer[0:0]
 	defer that.buff.Put(buf)
 
 	buf.buffer = append(buf.buffer, that.prefix(DefaultDepth, DefaultDepth, lv).Bytes()...)
-	buf.buffer = append(buf.buffer, data...)
+	if that.flag&int(FlagColor) > 0 {
+		buf.buffer = append(buf.buffer, colors[lv][1](data)...)
+	} else {
+		buf.buffer = append(buf.buffer, data...)
+	}
 
 	if buf.buffer[len(buf.buffer)-1] != '\n' {
 		buf.buffer = append(buf.buffer, '\n')
@@ -74,6 +88,9 @@ func (that *Logger) write(lv Level, data string) {
 }
 
 func (that *Logger) writeStack(depthStart, depthEnd int, lv Level, data string) {
+	if that.level&int(lv) < 1 {
+		return
+	}
 	buf := that.buff.Get().(*writeBuffer)
 	buf.buffer = buf.buffer[0:0]
 	defer that.buff.Put(buf)
@@ -86,7 +103,11 @@ func (that *Logger) writeStack(depthStart, depthEnd int, lv Level, data string) 
 	}
 
 	buf.buffer = append(buf.buffer, that.prefix(depthStart, depthEnd, lv).Bytes()...)
-	buf.buffer = append(buf.buffer, data...)
+	if that.flag&int(FlagColor) > 0 {
+		buf.buffer = append(buf.buffer, colors[lv][1](data)...)
+	} else {
+		buf.buffer = append(buf.buffer, data...)
+	}
 
 	if buf.buffer[len(buf.buffer)-1] != '\n' {
 		buf.buffer = append(buf.buffer, '\n')
@@ -109,18 +130,20 @@ func (that *Logger) prefix(depthStart, depthEnd int, lv Level) *bytes.Buffer {
 	}
 
 	if that.flag&int(FlagLevel) > 0 {
-		lv_str := fmt.Sprintf("[%s]", lvs[lv])
-		if that.flag&int(FlagColor) > 0 {
-			lv_str = colors[lv](lv_str)
-		}
-		buf.WriteString(lv_str)
-		buf.WriteByte(' ')
+		buf.WriteString(fmt.Sprintf("[%s] ", lvs[lv]))
 	}
 
-	if a, b := that.flag&int(FlagShortFile), that.flag&int(FlagLongFile); lv == LevelStack && (a > 0 || b > 0) {
+	if a, b := that.flag&int(FlagShortFile), that.flag&int(FlagLongFile); lv == LevelStack || lv == LevelFatal || lv == LevelPanic && (a > 0 || b > 0) {
 		buf.WriteByte('[')
 		that._stack(depthStart, depthEnd, a > 0, buf)
 		buf.WriteByte(']')
+		buf.WriteByte(' ')
+	}
+
+	if that.flag&int(FlagColor) > 0 {
+		str := colors[lv][0](string(buf.Bytes()[:buf.Len()-1]))
+		buf.Reset()
+		buf.WriteString(str)
 		buf.WriteByte(' ')
 	}
 
@@ -170,31 +193,31 @@ func (that *Logger) Close() {
 }
 
 func (that *Logger) Fatal(args ...any) {
-	that.write(LevelFatal, fmt.Sprint(args...))
+	that.writeStack(DefaultDepth, DefaultDepth, LevelFatal, fmt.Sprint(args...))
 	os.Exit(1)
 }
 func (that *Logger) Fatalf(format string, args ...any) {
-	that.write(LevelFatal, fmt.Sprintf(format, args...))
+	that.writeStack(DefaultDepth, DefaultDepth, LevelFatal, fmt.Sprint(args...))
 	os.Exit(1)
 }
 func (that *Logger) Fatalln(args ...any) {
-	that.write(LevelFatal, fmt.Sprintln(args...))
+	that.writeStack(DefaultDepth, DefaultDepth, LevelFatal, fmt.Sprint(args...))
 	os.Exit(1)
 }
 
 func (that *Logger) Panic(args ...any) {
 	msg := fmt.Sprint(args...)
-	that.write(LevelPanic, msg)
+	that.writeStack(DefaultDepth, DefaultDepth, LevelPanic, fmt.Sprint(args...))
 	panic(msg)
 }
 func (that *Logger) Panicf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	that.write(LevelPanic, msg)
+	that.writeStack(DefaultDepth, DefaultDepth, LevelPanic, fmt.Sprint(args...))
 	panic(msg)
 }
 func (that *Logger) Panicln(args ...any) {
-	msg := fmt.Sprintln(args...)
-	that.write(LevelPanic, msg)
+	msg := fmt.Sprint(args...)
+	that.writeStack(DefaultDepth, DefaultDepth, LevelPanic, fmt.Sprint(args...))
 	panic(msg)
 }
 
@@ -205,7 +228,7 @@ func (that *Logger) Printf(format string, args ...any) {
 	that.write(LevelPrint, fmt.Sprintf(format, args...))
 }
 func (that *Logger) Println(args ...any) {
-	that.write(LevelPrint, fmt.Sprintln(args...))
+	that.write(LevelPrint, fmt.Sprint(args...))
 }
 
 func (that *Logger) Info(args ...any) {
@@ -215,7 +238,7 @@ func (that *Logger) Infof(format string, args ...any) {
 	that.write(LevelInfo, fmt.Sprintf(format, args...))
 }
 func (that *Logger) Infoln(args ...any) {
-	that.write(LevelInfo, fmt.Sprintln(args...))
+	that.write(LevelInfo, fmt.Sprint(args...))
 }
 
 func (that *Logger) Warn(args ...any) {
@@ -225,7 +248,7 @@ func (that *Logger) Warnf(format string, args ...any) {
 	that.write(LevelWarn, fmt.Sprintf(format, args...))
 }
 func (that *Logger) Warnln(args ...any) {
-	that.write(LevelWarn, fmt.Sprintln(args...))
+	that.write(LevelWarn, fmt.Sprint(args...))
 }
 
 func (that *Logger) Error(args ...any) {
@@ -235,7 +258,7 @@ func (that *Logger) Errorf(format string, args ...any) {
 	that.write(LevelError, fmt.Sprintf(format, args...))
 }
 func (that *Logger) Errorln(args ...any) {
-	that.write(LevelError, fmt.Sprintln(args...))
+	that.write(LevelError, fmt.Sprint(args...))
 }
 
 func (that *Logger) Debug(args ...any) {
@@ -245,7 +268,7 @@ func (that *Logger) Debugf(format string, args ...any) {
 	that.write(LevelDebug, fmt.Sprintf(format, args...))
 }
 func (that *Logger) Debugln(args ...any) {
-	that.write(LevelDebug, fmt.Sprintln(args...))
+	that.write(LevelDebug, fmt.Sprint(args...))
 }
 
 // Stack
@@ -263,11 +286,11 @@ func (that *Logger) Stackf(depth int, format string, args ...any) {
 // Stackln
 // depth start from 4
 func (that *Logger) Stackln(depth int, args ...any) {
-	that.writeStack(DefaultDepth, depth, LevelStack, fmt.Sprintln(args...))
+	that.writeStack(DefaultDepth, depth, LevelStack, fmt.Sprint(args...))
 }
 
 func (that *Logger) _stackln(depth int, args ...any) {
-	that.writeStack(DefaultDepth+1, depth, LevelStack, fmt.Sprintln(args...))
+	that.writeStack(DefaultDepth+1, depth, LevelStack, fmt.Sprint(args...))
 }
 
 func (that *Logger) Json(lv Level, data any, args ...any) {
