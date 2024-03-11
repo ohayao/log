@@ -57,6 +57,9 @@ func (that *Logger) LevelRename(lv Level, newName string) {
 
 // write
 func (that *Logger) write(lv Level, data string) {
+	if that.level&int(lv) < 1 {
+		return
+	}
 	buf := that.buff.Get().(*writeBuffer)
 	buf.buffer = buf.buffer[0:0]
 	defer that.buff.Put(buf)
@@ -74,6 +77,9 @@ func (that *Logger) write(lv Level, data string) {
 }
 
 func (that *Logger) writeStack(depthStart, depthEnd int, lv Level, data string) {
+	if that.level&int(lv) < 1 {
+		return
+	}
 	buf := that.buff.Get().(*writeBuffer)
 	buf.buffer = buf.buffer[0:0]
 	defer that.buff.Put(buf)
