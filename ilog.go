@@ -55,14 +55,14 @@ var (
 )
 
 var colors = map[Level][2]func(a ...any) string{
-	LevelInfo:  {ANSIColor("", "#008000", true, false), ANSIColor("", "#008000", false, false)},
-	LevelWarn:  {ANSIColor("", "#dbb400", true, false), ANSIColor("", "#dbb400", false, false)},
-	LevelError: {ANSIColor("#f9ff83", "#f00", true, false), ANSIColor("", "#f00", false, false)},
-	LevelStack: {ANSIColor("", "#008fb7", true, false), ANSIColor("", "#008fb7", false, false)},
-	LevelDebug: {ANSIColor("", "#7800b9", true, false), ANSIColor("", "#7800b9", false, false)},
-	LevelFatal: {ANSIColor("#f00", "#fff", true, false), ANSIColor("", "#f00", false, false)},
-	LevelPanic: {ANSIColor("#f00", "#f00", true, false), ANSIColor("", "#f00", false, false)},
-	LevelPrint: {ANSIColor("", "#0046ff", true, false), ANSIColor("", "#0046ff", false, false)},
+	LevelInfo:  {ANSIColor("", "#8AE234", true, false), ANSIColor("", "#468A05", false, false)},
+	LevelWarn:  {ANSIColor("", "#FCE94F", true, false), ANSIColor("", "#C4A000", false, false)},
+	LevelError: {ANSIColor("#FFFF55", "#EF2929", true, false), ANSIColor("", "#CC0000", false, false)},
+	LevelStack: {ANSIColor("", "#34E2E2", true, false), ANSIColor("", "#046566", false, false)},
+	LevelDebug: {ANSIColor("", "#CF269C", true, false), ANSIColor("", "#7B296E", false, false)},
+	LevelFatal: {ANSIColor("#FF0000", "#FFFF55", true, true), ANSIColor("", "#FF0000", false, false)},
+	LevelPanic: {ANSIColor("#FFFF55", "#FF0000", true, true), ANSIColor("", "#FF0000", false, false)},
+	LevelPrint: {ANSIColor("", "#DEDEDC", false, false), ANSIColor("", "#424242", false, false)},
 }
 
 type ILogger interface {

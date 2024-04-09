@@ -25,4 +25,9 @@ func main() {
 	logger.Stackln(log.DefaultDepth, time.Now())
 	logger.Json(log.LevelError, map[string]interface{}{"a": 1, "b": "c"}, "json ")
 	logger.Println(time.Now())
+	if time.Now().Second()%2 == 0 {
+		logger.Fatalln(time.Now())
+	} else {
+		logger.Panicln(time.Now())
+	}
 }
