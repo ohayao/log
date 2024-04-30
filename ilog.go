@@ -94,9 +94,9 @@ type ILogger interface {
 	Debugf(format string, args ...any)
 	Debugln(args ...any)
 
-	Stack(depth int, args ...any)
-	Stackf(depth int, format string, args ...any)
-	Stackln(depth int, args ...any)
+	Stack(args ...any)
+	Stackf(format string, args ...any)
+	Stackln(args ...any)
 
 	Json(lv Level, data any, args ...any)
 	LevelRename(lv Level, newName string)
