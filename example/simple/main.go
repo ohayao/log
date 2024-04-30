@@ -22,7 +22,7 @@ func main() {
 	logger.Warn(time.Now())
 	logger.Error(time.Now())
 	logger.Debug(time.Now())
-	logger.Stackln(log.DefaultDepth, time.Now())
+	logger.Stackln(time.Now())
 	logger.Json(log.LevelError, map[string]interface{}{"a": 1, "b": "c"}, "json ")
 	logger.Println(time.Now())
 	if time.Now().Second()%2 == 0 {

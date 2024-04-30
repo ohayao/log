@@ -54,7 +54,7 @@ func main() {
 		logger.Warnln(time.Now())
 		logger.Errorln(time.Now())
 		logger.Debugln(time.Now())
-		logger.Stackln(log.DefaultDepth, time.Now())
+		logger.Stackln( time.Now())
 		logger.Println(time.Now())
 		logger.Json(log.LevelError, map[string]interface{}{"a": 1, "b": "c"}, "json ")
 		// logger.Fatalln(time.Now())
