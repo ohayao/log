@@ -1,6 +1,7 @@
 # log
 > a golang log library
-
+> 
+![示例](docs/default.png)
 ![示例](docs/example.png)
 
 ## Features
