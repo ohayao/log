@@ -12,6 +12,7 @@
 - `level` 分级
 - `flag` 标记
 - `color` 颜色
+- `gorm` 对gorm日志支持
 
 ## 示例
 ``` go

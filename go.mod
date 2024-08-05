@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/muesli/termenv v0.15.2
 	github.com/robfig/cron/v3 v3.0.1
+	gorm.io/gorm v1.25.11
 )
 
 require (
