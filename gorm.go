@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -10,59 +11,104 @@ import (
 	glogger "gorm.io/gorm/logger"
 )
 
-type GormLogHandler struct {
-	ctx    context.Context
-	Logger *Logger
+type GormLoggerHandler struct {
+	handler                   IHandler
+	LogLevel                  glogger.LogLevel
+	IgnoreRecordNotFoundError bool
+	SlowThreshold             time.Duration
+	ColorFul                  bool
 }
 
-func WrapLoggerForGorm(ctx context.Context, logger *Logger) *GormLogHandler {
-	return &GormLogHandler{
-		ctx:    ctx,
-		Logger: logger,
+func NewGormLoggerHandler(handler IHandler) *GormLoggerHandler {
+	return &GormLoggerHandler{
+		handler: handler,
 	}
 }
 
-func (that *GormLogHandler) LogMode(level glogger.LogLevel) glogger.Interface {
-	switch level {
-	case glogger.Info:
-		that.Logger.SetLevels(LevelInfo, LevelWarn, LevelError, LevelDebug)
-	case glogger.Warn:
-		that.Logger.SetLevels(LevelWarn, LevelError, LevelDebug)
-	case glogger.Error:
-		that.Logger.SetLevels(LevelError, LevelDebug)
-	case glogger.Silent:
-		that.Logger.SetLevels(LevelDebug) // 禁用日志, 但是debug级别仍有效
-	}
+func (that *GormLoggerHandler) Write(b []byte) (n int, err error) {
+	return that.handler.Write(b)
+}
+func (that *GormLoggerHandler) Close() error {
+	return that.handler.Close()
+}
+
+func (that *GormLoggerHandler) LogMode(level glogger.LogLevel) glogger.Interface {
+	that.LogLevel = level
+	return that
+}
+func (that *GormLoggerHandler) SetSlowThreshold(value time.Duration) glogger.Interface {
+	that.SlowThreshold = value
+	return that
+}
+func (that *GormLoggerHandler) SetIgnoreRecordNotFoundError(value bool) glogger.Interface {
+	that.IgnoreRecordNotFoundError = value
+	return that
+}
+func (that *GormLoggerHandler) SetColorful(value bool) glogger.Interface {
+	that.ColorFul = value
 	return that
 }
 
-func (that *GormLogHandler) Info(ctx context.Context, format string, args ...any) {
-	that.Logger.Infof(format, args...)
+func (that *GormLoggerHandler) format(level Level, format string, args ...any) (date, lv, msg string) {
+	date = time.Now().Format("2006/01/02 15:04:05.000")
+	lv = fmt.Sprintf("[%s]", lvs[level])
+	msg = fmt.Sprintf(format, args...)
+	if that.ColorFul {
+		date = colors[LevelInfo][0](date)
+		lv = colors[LevelInfo][0](lv)
+		msg = colors[LevelInfo][1](msg)
+	}
+	return
 }
-func (that *GormLogHandler) Warn(ctx context.Context, format string, args ...any) {
-	that.Logger.Warnf(format, args...)
+
+func (that *GormLoggerHandler) Info(ctx context.Context, format string, args ...any) {
+	if that.LogLevel >= glogger.Info {
+		date, lv, msg := that.format(LevelInfo, format, args...)
+		that.handler.Write([]byte(fmt.Sprintf("%s %s %s\n", date, lv, msg)))
+	}
 }
-func (that *GormLogHandler) Error(ctx context.Context, format string, args ...any) {
-	that.Logger.Errorf(format, args...)
+
+func (that *GormLoggerHandler) Warn(ctx context.Context, format string, args ...any) {
+	if that.LogLevel >= glogger.Warn {
+		date, lv, msg := that.format(LevelWarn, format, args...)
+		that.handler.Write([]byte(fmt.Sprintf("%s %s %s\n", date, lv, msg)))
+	}
 }
-func (that *GormLogHandler) Trace(ctx context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {
+func (that *GormLoggerHandler) Error(ctx context.Context, format string, args ...any) {
+	if that.LogLevel >= glogger.Error {
+		date, lv, msg := that.format(LevelError, format, args...)
+		that.handler.Write([]byte(fmt.Sprintf("%s %s %s\n", date, lv, msg)))
+	}
+}
+
+func (that *GormLoggerHandler) Trace(ctx context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {
+	if that.LogLevel <= glogger.Silent {
+		return
+	}
 	elapsed := time.Since(begin)
 	sql, rows := fc()
-	file, line := _FileWithLineNum()
-	if that.Logger.flag&int(FlagShortFile) > 0 {
-		file = _shortFile(file)
-	}
+	file, line := _caller_file_line()
 	file__line := fmt.Sprintf("%s:%d", file, line)
 	rows_times := fmt.Sprintf("[rows:%d %.3fms]", rows, float64(elapsed.Nanoseconds())/1e6)
-	if that.Logger.flag&int(FlagColor) > 0 {
+	date, lv, _ := that.format(LevelDebug, "")
+	slow := "[SLOW]"
+	if that.ColorFul {
 		file__line = colors[LevelStack][1](file__line)
 		rows_times = colors[LevelInfo][1](rows_times)
 		sql = colors[LevelPrint][1](sql)
+		slow = colors[LevelError][1](slow)
 	}
-	that.Logger.Debugf("%s %s %s", file__line, rows_times, sql)
+	switch {
+	case err != nil && that.LogLevel >= glogger.Error && (!errors.Is(err, glogger.ErrRecordNotFound) || !that.IgnoreRecordNotFoundError):
+		that.handler.Write([]byte(fmt.Sprintf("%s %s %s %s %s \nError: %v\n", date, lv, file__line, rows_times, sql, err)))
+	case elapsed > that.SlowThreshold && that.SlowThreshold != 0 && that.LogLevel >= glogger.Warn:
+		that.handler.Write([]byte(fmt.Sprintf("%s %s %s %s %s %s\n", date, lv, file__line, rows_times, slow, sql)))
+	case that.LogLevel == glogger.Info:
+		that.handler.Write([]byte(fmt.Sprintf("%s %s %s %s %s\n", date, lv, file__line, rows_times, sql)))
+	}
 }
 
-func _FileWithLineNum() (string, int) {
+func _caller_file_line() (string, int) {
 	pcs := [13]uintptr{}
 	len := runtime.Callers(3, pcs[:])
 	frames := runtime.CallersFrames(pcs[:len])

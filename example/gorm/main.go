@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 
 	"github.com/ohayao/log"
@@ -9,14 +8,25 @@ import (
 )
 
 func main() {
+	// init handler
 	sh := log.NewStreamHandler(os.Stdout)
-	logger := log.NewLogger(sh)
+	// init gormloghandler with handler
+	glh := log.NewGormLoggerHandler(sh)
+	// init logger
+	logger := log.NewLogger(glh)
+	// set basic logger
 	logger.SetLevels(log.LevelAll)
-	glogger := log.WrapLoggerForGorm(context.TODO(), logger)
-	glogger.Logger.SetFlags(log.FlagTime, log.FlagColor, log.FlagLevel, log.FlagLongFile)
+	logger.SetFlags(log.FlagLevel, log.FlagColor)
+	// you can also set gormlogger
+	glh.SetColorful(true)
+	glh.SetIgnoreRecordNotFoundError(true)
+
+	// ....
+	// mysql config set
+
 	// db, err = gorm.Open(mysql.New(mysql.Config{
 	// 	Conn: sqldb,
 	// }), &gorm.Config{
-	// 	Logger: glogger.LogMode(gormlogger.Info),
+	// 	Logger: glh.LogMode(gormlogger.Info).(*log.GormLoggerHandler).SetSlowThreshold(time.Millisecond * 3),
 	// })
 }
