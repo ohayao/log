@@ -12,6 +12,15 @@ var (
 
 func init() {
 	handler := NewStreamHandler(os.Stderr)
+	CustomHandler(handler)
+}
+
+// 自定义handler，默认方式为 StreamHandler(os.Stderr)
+func CustomHandler(handler IHandler) {
+	if _default != nil {
+		_default.Close()
+		_default = nil
+	}
 	_default = NewLogger(handler)
 	SetFlags(FlagAll &^ FlagTimeStamp &^ FlagNewLine)
 	SetLevels(LevelAll)

@@ -15,6 +15,7 @@ type CronHandler struct {
 	fileName string
 	spec     string
 	lock     sync.Mutex
+	_cron    *cron.Cron
 }
 
 func (that *CronHandler) Write(b []byte) (n int, err error) {
@@ -25,6 +26,9 @@ func (that *CronHandler) Write(b []byte) (n int, err error) {
 }
 
 func (that *CronHandler) Close() error {
+	if that._cron != nil {
+		that._cron.Stop()
+	}
 	return that.fd.Close()
 }
 
@@ -32,7 +36,7 @@ func (that *CronHandler) cron() {
 	that.lock.Lock()
 	defer that.lock.Unlock()
 	// backup
-	that.fd.Close()
+	_ = that.fd.Close()
 	os.Rename(that.fileName, fmt.Sprintf("%s.bak.%s", that.fileName, time.Now().Format("060102150405")))
 	that.fd, _ = os.OpenFile(that.fileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 }
@@ -61,5 +65,6 @@ func NewCronHandler(file string, spec string) (*CronHandler, error) {
 		return nil, err
 	}
 	timer.Start()
+	ch._cron = timer
 	return ch, nil
 }

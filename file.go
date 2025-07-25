@@ -38,7 +38,7 @@ func (that *FileHandler) check() {
 		return
 	}
 	// backup
-	that.fd.Close()
+	_ = that.fd.Close()
 	os.Rename(that.fileName, fmt.Sprintf("%s.bak.%s", that.fileName, time.Now().Format("060102150405")))
 	that.fd, _ = os.OpenFile(that.fileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 	that.curSize = 0

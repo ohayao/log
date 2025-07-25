@@ -213,7 +213,7 @@ func (that *Logger) Fatal(args ...any) {
 	os.Exit(1)
 }
 func (that *Logger) Fatalf(format string, args ...any) {
-	that.writeStack(DefaultDepth, LevelFatal, fmt.Sprint(args...))
+	that.writeStack(DefaultDepth, LevelFatal, fmt.Sprintf(format, args...))
 	os.Exit(1)
 }
 func (that *Logger) Fatalln(args ...any) {
@@ -228,7 +228,7 @@ func (that *Logger) Panic(args ...any) {
 }
 func (that *Logger) Panicf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
-	that.writeStack(DefaultDepth, LevelPanic, fmt.Sprint(args...))
+	that.writeStack(DefaultDepth, LevelPanic, fmt.Sprintf(format, args...))
 	panic(msg)
 }
 func (that *Logger) Panicln(args ...any) {
