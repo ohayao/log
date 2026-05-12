@@ -1,146 +1,97 @@
 package log
 
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-)
-
-var (
-	_default *Logger
-)
+var DEFAULT *Logger
 
 func init() {
-	handler := NewStreamHandler(os.Stderr)
-	CustomHandler(handler)
+	DEFAULT = New(newTerminalHandler(nil), WithColor(true), WithMinLevel(LV_DEBUG), WithShortName(false), WithTimeStyle(FLAG_TIME_DATETIME))
 }
 
-// 自定义handler，默认方式为 StreamHandler(os.Stderr)
-func CustomHandler(handler IHandler) {
-	if _default != nil {
-		_default.Close()
-		_default = nil
+func UseOption(logger *Logger, opts ...Option) {
+	for _, opt := range opts {
+		opt(logger)
 	}
-	_default = NewLogger(handler)
-	SetFlags(FlagAll &^ FlagTimeStamp &^ FlagNewLine)
-	SetLevels(LevelAll)
 }
 
 func Fatal(args ...any) {
-	_default.Fatal(args...)
+	DEFAULT.Fatal(args...)
 }
 
 func Fatalf(format string, args ...any) {
-	_default.Fatalf(format, args...)
+	DEFAULT.Fatalf(format, args...)
 }
 
 func Fatalln(args ...any) {
-	_default.Fatalln(args...)
+	DEFAULT.Fatalln(args...)
 }
 
 func Panic(args ...any) {
-	_default.Panic(args...)
+	DEFAULT.Panic(args...)
 }
 
 func Panicf(format string, args ...any) {
-	_default.Panicf(format, args...)
+	DEFAULT.Panicf(format, args...)
 }
 
 func Panicln(args ...any) {
-	_default.Panicln(args...)
+	DEFAULT.Panicln(args...)
 }
 
 func Print(args ...any) {
-	_default.Print(args...)
+	DEFAULT.Print(args...)
 }
 
 func Printf(format string, args ...any) {
-	_default.Printf(format, args...)
+	DEFAULT.Printf(format, args...)
 }
 
 func Println(args ...any) {
-	_default.Println(args...)
+	DEFAULT.Println(args...)
 }
 
 func Info(args ...any) {
-	_default.Info(args...)
+	DEFAULT.Info(args...)
 }
 
 func Infof(format string, args ...any) {
-	_default.Infof(format, args...)
+	DEFAULT.Infof(format, args...)
 }
 
 func Infoln(args ...any) {
-	_default.Infoln(args...)
+	DEFAULT.Infoln(args...)
 }
 
 func Warn(args ...any) {
-	_default.Warn(args...)
+	DEFAULT.Warn(args...)
 }
 
 func Warnf(format string, args ...any) {
-	_default.Warnf(format, args...)
+	DEFAULT.Warnf(format, args...)
 }
 
 func Warnln(args ...any) {
-	_default.Warnln(args...)
+	DEFAULT.Warnln(args...)
 }
 
 func Error(args ...any) {
-	_default.Error(args...)
+	DEFAULT.Error(args...)
 }
 
 func Errorf(format string, args ...any) {
-	_default.Errorf(format, args...)
+	DEFAULT.Errorf(format, args...)
 }
 
 func Errorln(args ...any) {
-	_default.Errorln(args...)
+	DEFAULT.Errorln(args...)
 }
 
 func Debug(args ...any) {
-	_default.Debug(args...)
+	DEFAULT.Debug(args...)
 }
 
 func Debugf(format string, args ...any) {
-	_default.Debugf(format, args...)
+	DEFAULT.Debugf(format, args...)
 }
 
 func Debugln(args ...any) {
-	_default.Debugln(args...)
-}
-
-func Stack(args ...any) {
-	_default._stackln(DefaultDepth+1, fmt.Sprint(args...))
-}
-
-func Stackf(format string, args ...any) {
-	_default._stackln(DefaultDepth+1, fmt.Sprintf(format, args...))
-}
-
-func Stackln(args ...any) {
-	_default._stackln(DefaultDepth+1, args...)
-}
-
-func Json(lv Level, data any, args ...any) {
-	if lv == LevelStack {
-		bs, _ := json.Marshal(data)
-		str := fmt.Sprint(fmt.Sprint(args...), string(bs))
-		_default._stackln(DefaultDepth+1, str)
-	} else {
-		_default.Json(lv, data, args...)
-
-	}
-}
-
-func LevelRename(lv Level, newName string) {
-	_default.LevelRename(lv, newName)
-}
-
-func SetLevels(levels ...Level) {
-	_default.SetLevels(levels...)
-}
-
-func SetFlags(flgas ...Flag) {
-	_default.SetFlags(flgas...)
+	DEFAULT.Debugln(args...)
 }

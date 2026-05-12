@@ -1,332 +1,254 @@
 package log
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
-	"runtime"
+	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 type Logger struct {
-	handler IHandler
-	flag    int
-	level   int
-	buff    sync.Pool
-	lock    sync.Mutex
+	handler     IHandler
+	enableColor bool
+	shortName   bool
+	flagTime    FLAG_TIME
+	level       int
+	pool        *sync.Pool
 }
 
-func NewLogger(handler IHandler) *Logger {
-	var log = new(Logger)
-	log.handler = handler
-	log.buff = sync.Pool{
-		New: func() interface{} {
-			buffer := &writeBuffer{buffer: make([]byte, 0, 1024)}
-			return buffer
+type writePool struct {
+	buffer []byte
+}
+
+func poolNew() *sync.Pool {
+	return &sync.Pool{
+		New: func() any {
+			return &writePool{
+				buffer: make([]byte, 0, 1024),
+			}
 		},
 	}
-	return log
 }
 
-// SetFlags
-// eg: SetFlags(FlagTime,FlagLevel,FlagColor).
-// eg: SetFlags(FlagAll &^ FlagNewLine) 所有标记，除去换行标记.
-// 当Level标记中未排除Stack,Fatal,Panic时，且未标记长文件或短文件时,
-// 自动添加一个短文件标记
-func (that *Logger) SetFlags(flags ...Flag) {
-	that.lock.Lock()
-	defer that.lock.Unlock()
-	that.flag = 0
-	for _, f := range flags {
-		that.flag = that.flag | int(f)
-	}
-	if !(that.flag&int(FlagShortFile) > 0 || that.flag&int(FlagLongFile) > 0) && (that.level&int(LevelStack) > 0 || that.level&int(LevelFatal) > 0 || that.level&int(LevelPanic) > 0) {
-		that.flag |= int(FlagShortFile)
-	}
-}
-
-// SetLevels
-// eg: SetLevels(LevelInfo,LevelError,LevelStack).
-// eg: SetLevels(Level &^ LevelDebug) 所有标记，除去调试信息.
-// 当Level中包含Stack,Fatal,Panic时，且flag未有文件标记时,
-// 自动在flag中添加短文件标记
-func (that *Logger) SetLevels(levels ...Level) {
-	that.lock.Lock()
-	defer that.lock.Unlock()
-	that.level = 0
-	for _, lv := range levels {
-		that.level = that.level | int(lv)
-	}
-	if (that.level&int(LevelStack) > 0 || that.level&int(LevelFatal) > 0 || that.level&int(LevelPanic) > 0) && !(that.flag&int(FlagShortFile) > 0 || that.flag&int(FlagLongFile) > 0) {
-		that.flag |= int(FlagShortFile)
-	}
-}
-
-// LevelRename
-func (that *Logger) LevelRename(lv Level, newName string) {
-	that.lock.Lock()
-	defer that.lock.Unlock()
-	lvs[lv] = newName
-}
-
-// write
-func (that *Logger) write(lv Level, data string) {
-	if that.level&int(lv) < 1 {
-		return
-	}
-	buf := that.buff.Get().(*writeBuffer)
-	buf.buffer = buf.buffer[0:0]
-	defer that.buff.Put(buf)
-
-	buf.buffer = append(buf.buffer, that.prefix(DefaultDepth, lv).Bytes()...)
-	if that.flag&int(FlagColor) > 0 {
-		buf.buffer = append(buf.buffer, colors[lv][1](data)...)
-	} else {
-		buf.buffer = append(buf.buffer, data...)
-	}
-
-	if len(buf.buffer) > 0 && buf.buffer[len(buf.buffer)-1] != '\n' {
-		buf.buffer = append(buf.buffer, '\n')
-	}
-
-	that.lock.Lock()
-	that.handler.Write(buf.buffer)
-	that.lock.Unlock()
-}
-
-func (that *Logger) writeStack(depthStart int, lv Level, data string) {
-	if that.level&int(lv) < 1 {
-		return
-	}
-	buf := that.buff.Get().(*writeBuffer)
-	buf.buffer = buf.buffer[0:0]
-	defer that.buff.Put(buf)
-
-	if depthStart < DefaultDepth {
-		depthStart = DefaultDepth
-	}
-
-	buf.buffer = append(buf.buffer, that.prefix(depthStart, lv).Bytes()...)
-	if that.flag&int(FlagColor) > 0 {
-		buf.buffer = append(buf.buffer, colors[lv][1](data)...)
-	} else {
-		buf.buffer = append(buf.buffer, data...)
-	}
-
-	if len(buf.buffer) > 0 && buf.buffer[len(buf.buffer)-1] != '\n' {
-		buf.buffer = append(buf.buffer, '\n')
-	}
-
-	that.lock.Lock()
-	that.handler.Write(buf.buffer)
-	that.lock.Unlock()
-}
-
-func (that *Logger) prefix(depthStart int, lv Level) *bytes.Buffer {
-	buf := bytes.NewBufferString("")
+func (l *Logger) withPrefix(lv int, buf *writePool) {
 	now := time.Now()
-	if that.flag&int(FlagTime) > 0 {
-		buf.WriteString(now.Format("2006/01/02 15:04:05.000 "))
+	switch l.flagTime {
+	case FLAG_TIME_DATE:
+		buf.buffer = append(buf.buffer, now.Format("2006/01/02 ")...)
+	case FLAG_TIME_TIME:
+		buf.buffer = append(buf.buffer, now.Format("15:04:05.000 ")...)
+	case FLAG_TIME_DATETIME:
+		buf.buffer = append(buf.buffer, now.Format("2006/01/02 15:04:05.000 ")...)
+	case FLAG_TIME_TIMESTAMP:
+		buf.buffer = append(buf.buffer, []byte(strconv.Itoa(int(now.UnixMilli())))...)
+	case FLAG_TIME_NONE:
+		// none time
 	}
 
-	if that.flag&int(FlagTimeStamp) > 0 {
-		buf.WriteString(fmt.Sprintf("%d ", now.UnixMicro()/1e3))
+	attr := LV_ATTRS[lv]
+	flagName := ifs(l.shortName, attr.ShortName, attr.Name)
+	if l.enableColor {
+		buf.buffer = append(buf.buffer, []byte(ColorWrap(flagName, attr.Color...))...)
+	} else {
+		buf.buffer = append(buf.buffer, []byte(flagName)...)
 	}
+	buf.buffer = append(buf.buffer, 0x20)
 
-	if that.flag&int(FlagLevel) > 0 {
-		buf.WriteString(fmt.Sprintf("[%s] ", lvs[lv]))
+	if lv == LV_DEBUG || lv == LV_ERROR || lv == LV_FATAL || lv == LV_PANIC {
+		file, line, fn := WhoCalledMe()
+		file = ShortFileName(file)
+		if l.enableColor {
+			buf.buffer = append(buf.buffer, fmt.Appendf(nil, "%s%s%s%s:%d %s%s%s ", COLOR_CTRL_RESET, COLOR_FG_YELLOW, COLOR_CTRL_UNDERLINE, file, line, COLOR_FG_RED, fn, COLOR_CTRL_RESET)...)
+		} else {
+			buf.buffer = append(buf.buffer, fmt.Appendf(nil, "%s:%d %s ", file, line, fn)...)
+		}
 	}
-
-	if a, b := that.flag&int(FlagShortFile), that.flag&int(FlagLongFile); (lv == LevelStack || lv == LevelFatal || lv == LevelPanic) && (a > 0 || b > 0) {
-		buf.WriteByte('[')
-		that._stack(depthStart, a > 0, buf)
-		buf.WriteByte(']')
-		buf.WriteByte(' ')
-	}
-
-	if that.flag&int(FlagColor) > 0 && buf.Len() > 1 {
-		str := colors[lv][0](string(buf.Bytes()[:buf.Len()-1]))
-		buf.Reset()
-		buf.WriteString(str)
-		buf.WriteByte(' ')
-	}
-
-	if that.flag&int(FlagNewLine) > 0 {
-		buf.WriteByte('\n')
-	}
-	return buf
 }
 
-func (that *Logger) _stack(skip int, isShort bool, buf *bytes.Buffer) {
-	list := make([]string, 0)
-	for {
-		if pc, file, line, ok := runtime.Caller(skip); ok {
-			fn := runtime.FuncForPC(pc)
-			if fn == nil || strings.HasPrefix(strings.ToLower(fn.Name()), "runtime.") {
-				break
+func (l *Logger) colorArgs(needSpace bool, args ...any) []any {
+	result := make([]any, 0)
+	for _, arg := range args {
+		result = append(result, l.colorTypes(arg, ""))
+		if needSpace {
+			result = append(result, " ")
+		}
+	}
+	return result
+}
+
+func (l *Logger) colorTypes(arg any, verb string) string {
+	str := ifs(verb == "", fmt.Sprint(arg), fmt.Sprintf(verb, arg))
+	switch reflect.ValueOf(arg).Kind() {
+	case reflect.String:
+		return str
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64, reflect.Ptr, reflect.Uintptr,
+		reflect.Complex64, reflect.Complex128:
+		return ColorWrap(str, COLOR_FG_MAGENTA)
+	case reflect.Bool, reflect.Array, reflect.Slice, reflect.Map:
+		return ColorWrap(str, COLOR_FG_CYAN)
+	case reflect.Struct, reflect.Chan, reflect.Func, reflect.Interface:
+		return ColorWrap(str, COLOR_FG_BLUE)
+	default:
+		return str
+	}
+}
+
+func (l *Logger) colorFormatArgs(format string, args ...any) string {
+	reg := regexp.MustCompile(`%(\[[1-9]\d*\])?([+\-# 0]*)(\d+|\*)?(\.(\d+|\*))?([a-zA-Z%])`)
+	matches := reg.FindAllStringSubmatchIndex(format, -1)
+	var sb strings.Builder
+	var lastIndex, argIndex int = 0, 0
+	for _, match := range matches {
+		start, end := match[0], match[1]
+		verb := format[start:end]
+		sb.WriteString(format[lastIndex:start])
+		if verb == "%%" {
+			sb.WriteString("%")
+			lastIndex = end
+			continue
+		}
+
+		var idx int
+		hasIndex := false
+		m2, m3 := match[2], match[3]
+		if m2 > 0 && m3 > 0 {
+			idxStr := format[m2+1 : m3-1]
+			idx, _ = strconv.Atoi(idxStr)
+			hasIndex = true
+		}
+		var arg any
+		if hasIndex {
+			if idx < 1 || idx > len(args) {
+				arg = nil
 			} else {
-				if isShort {
-					list = append(list, fmt.Sprintf("%s:%d", _shortFile(file), line))
-				} else {
-					list = append(list, fmt.Sprintf("%s:%d", _longFile(file), line))
-				}
+				arg = args[idx-1]
 			}
 		} else {
-			break
+			if argIndex >= len(args) {
+				arg = nil
+			} else {
+				arg = args[argIndex]
+				argIndex++
+			}
 		}
-		skip++
+		sb.WriteString(l.colorTypes(arg, verb))
+		lastIndex = end
 	}
-
-	buf.WriteString(strings.Join(list, " <- "))
+	sb.WriteString(format[lastIndex:])
+	return sb.String()
 }
 
-func _shortFile(file string) string {
-	for i := len(file) - 1; i > 0; i-- {
-		if file[i] == '/' {
-			return file[i+1:]
-		}
+func (l *Logger) log(lv int, args ...any) {
+	if lv < l.level {
+		return
 	}
-	return file
+	buf := l.pool.Get().(*writePool)
+	buf.buffer = buf.buffer[:0]
+	defer l.pool.Put(buf)
+	l.withPrefix(lv, buf)
+	if l.enableColor {
+		args = l.colorArgs(true, args...)
+	}
+	buf.buffer = append(buf.buffer, fmt.Sprint(args...)...)
+	l.handler.Write(buf.buffer)
+	l.handler.Write([]byte("\n"))
 }
 
-func _longFile(file string) string {
-	file = strings.ReplaceAll(file, "\\", "/")
-	if dir, err := os.Getwd(); err != nil {
-		return file
+func (l *Logger) logf(lv int, format string, args ...any) {
+	if lv < l.level {
+		return
+	}
+	buf := l.pool.Get().(*writePool)
+	buf.buffer = buf.buffer[:0]
+	defer l.pool.Put(buf)
+	l.withPrefix(lv, buf)
+	if l.enableColor {
+		buf.buffer = append(buf.buffer, l.colorFormatArgs(format, args...)...)
 	} else {
-		dir := strings.ReplaceAll(dir, "\\", "/")
-		return strings.TrimPrefix(strings.TrimPrefix(file, dir), "/")
+		buf.buffer = append(buf.buffer, fmt.Sprintf(format, args...)...)
 	}
+	l.handler.Write(buf.buffer)
+	l.handler.Write([]byte("\n"))
 }
 
-func (that *Logger) Close() {
-	that.lock.Lock()
-	defer that.lock.Unlock()
-	that.handler.Close()
+func (l *Logger) Fatal(args ...any) {
+	l.log(LV_FATAL, args...)
+	os.Exit(0)
+}
+func (l *Logger) Fatalf(format string, args ...any) {
+	l.logf(LV_FATAL, format, args...)
+	os.Exit(0)
+}
+func (l *Logger) Fatalln(args ...any) {
+	l.log(LV_FATAL, args...)
+	os.Exit(0)
 }
 
-func (that *Logger) Fatal(args ...any) {
-	that.writeStack(DefaultDepth, LevelFatal, fmt.Sprint(args...))
-	os.Exit(1)
+func (l *Logger) Panic(args ...any) {
+	l.log(LV_PANIC, args...)
+	panic(struct{}{})
 }
-func (that *Logger) Fatalf(format string, args ...any) {
-	that.writeStack(DefaultDepth, LevelFatal, fmt.Sprintf(format, args...))
-	os.Exit(1)
+func (l *Logger) Panicf(format string, args ...any) {
+	l.logf(LV_PANIC, format, args...)
+	panic(struct{}{})
 }
-func (that *Logger) Fatalln(args ...any) {
-	that.writeStack(DefaultDepth, LevelFatal, fmt.Sprint(args...))
-	os.Exit(1)
-}
-
-func (that *Logger) Panic(args ...any) {
-	msg := fmt.Sprint(args...)
-	that.writeStack(DefaultDepth, LevelPanic, fmt.Sprint(args...))
-	panic(msg)
-}
-func (that *Logger) Panicf(format string, args ...any) {
-	msg := fmt.Sprintf(format, args...)
-	that.writeStack(DefaultDepth, LevelPanic, fmt.Sprintf(format, args...))
-	panic(msg)
-}
-func (that *Logger) Panicln(args ...any) {
-	msg := fmt.Sprint(args...)
-	that.writeStack(DefaultDepth, LevelPanic, fmt.Sprint(args...))
-	panic(msg)
+func (l *Logger) Panicln(args ...any) {
+	l.log(LV_PANIC, args...)
+	panic(struct{}{})
 }
 
-func (that *Logger) Print(args ...any) {
-	that.write(LevelPrint, fmt.Sprint(args...))
+func (l *Logger) Print(args ...any) {
+	l.log(LV_PRINT, args...)
 }
-func (that *Logger) Printf(format string, args ...any) {
-	that.write(LevelPrint, fmt.Sprintf(format, args...))
+func (l *Logger) Printf(format string, args ...any) {
+	l.logf(LV_PRINT, format, args...)
 }
-func (that *Logger) Println(args ...any) {
-	that.write(LevelPrint, fmt.Sprint(args...))
-}
-
-func (that *Logger) Info(args ...any) {
-	that.write(LevelInfo, fmt.Sprint(args...))
-}
-func (that *Logger) Infof(format string, args ...any) {
-	that.write(LevelInfo, fmt.Sprintf(format, args...))
-}
-func (that *Logger) Infoln(args ...any) {
-	that.write(LevelInfo, fmt.Sprint(args...))
+func (l *Logger) Println(args ...any) {
+	l.log(LV_PRINT, args...)
 }
 
-func (that *Logger) Warn(args ...any) {
-	that.write(LevelWarn, fmt.Sprint(args...))
+func (l *Logger) Info(args ...any) {
+	l.log(LV_INFO, args...)
 }
-func (that *Logger) Warnf(format string, args ...any) {
-	that.write(LevelWarn, fmt.Sprintf(format, args...))
+func (l *Logger) Infof(format string, args ...any) {
+	l.logf(LV_INFO, format, args...)
 }
-func (that *Logger) Warnln(args ...any) {
-	that.write(LevelWarn, fmt.Sprint(args...))
-}
-
-func (that *Logger) Error(args ...any) {
-	that.write(LevelError, fmt.Sprint(args...))
-}
-func (that *Logger) Errorf(format string, args ...any) {
-	that.write(LevelError, fmt.Sprintf(format, args...))
-}
-func (that *Logger) Errorln(args ...any) {
-	that.write(LevelError, fmt.Sprint(args...))
+func (l *Logger) Infoln(args ...any) {
+	l.log(LV_INFO, args...)
 }
 
-func (that *Logger) Debug(args ...any) {
-	that.write(LevelDebug, fmt.Sprint(args...))
+func (l *Logger) Warn(args ...any) {
+	l.log(LV_WARN, args...)
 }
-func (that *Logger) Debugf(format string, args ...any) {
-	that.write(LevelDebug, fmt.Sprintf(format, args...))
+func (l *Logger) Warnf(format string, args ...any) {
+	l.logf(LV_WARN, format, args...)
 }
-func (that *Logger) Debugln(args ...any) {
-	that.write(LevelDebug, fmt.Sprint(args...))
-}
-
-// Stack
-func (that *Logger) Stack(args ...any) {
-	that.writeStack(DefaultDepth, LevelStack, fmt.Sprint(args...))
+func (l *Logger) Warnln(args ...any) {
+	l.log(LV_WARN, args...)
 }
 
-// Stackf
-func (that *Logger) Stackf(format string, args ...any) {
-	that.writeStack(DefaultDepth, LevelStack, fmt.Sprintf(format, args...))
+func (l *Logger) Error(args ...any) {
+	l.log(LV_ERROR, args...)
+}
+func (l *Logger) Errorf(format string, args ...any) {
+	l.logf(LV_ERROR, format, args...)
+}
+func (l *Logger) Errorln(args ...any) {
+	l.log(LV_ERROR, args...)
 }
 
-// Stackln
-func (that *Logger) Stackln(args ...any) {
-	that.writeStack(DefaultDepth, LevelStack, fmt.Sprint(args...))
+func (l *Logger) Debug(args ...any) {
+	l.log(LV_DEBUG, args...)
 }
-
-func (that *Logger) _stackln(depth int, args ...any) {
-	that.writeStack(depth, LevelStack, fmt.Sprint(args...))
+func (l *Logger) Debugf(format string, args ...any) {
+	l.logf(LV_DEBUG, format, args...)
 }
-
-func (that *Logger) Json(lv Level, data any, args ...any) {
-	bs, _ := json.Marshal(data)
-	str := fmt.Sprint(fmt.Sprint(args...), string(bs))
-	switch lv {
-	case LevelFatal:
-		that.Fatalln(str)
-	case LevelPanic:
-		that.Panicln(str)
-	case LevelPrint:
-		that.Println(str)
-	case LevelInfo:
-		that.Infoln(str)
-	case LevelWarn:
-		that.Warnln(str)
-	case LevelError:
-		that.Errorln(str)
-	case LevelDebug:
-		that.Debugln(str)
-	case LevelStack:
-		that._stackln(DefaultDepth+1, str)
-	default:
-		that.Infoln(str)
-	}
+func (l *Logger) Debugln(args ...any) {
+	l.log(LV_DEBUG, args...)
 }
