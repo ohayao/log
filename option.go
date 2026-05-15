@@ -8,9 +8,9 @@ func WithMinLevel(minLevel int) Option {
 	}
 }
 
-func WithShortName(ok bool) Option {
+func WithShortName(enable bool) Option {
 	return func(l *Logger) {
-		l.shortName = ok
+		l.shortName = enable
 	}
 }
 
@@ -20,8 +20,8 @@ func WithTimeStyle(style FLAG_TIME) Option {
 	}
 }
 
-func WithColor(ok bool) Option {
+func WithColor(enable bool) Option {
 	return func(l *Logger) {
-		l.enableColor = ok
+		l.enableColor = enable
 	}
 }
