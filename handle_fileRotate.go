@@ -1,8 +1,8 @@
 package log
 
 import (
+	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"sync"
 	"time"
@@ -11,8 +11,7 @@ import (
 type fileRotateHandler struct {
 	lock           sync.Mutex
 	fd             *os.File
-	dir            string
-	fileName       string    // 日志文件名
+	file           string
 	maxAgeHours    int       // 最大存储小时
 	hoursInterval  int       // 每几小时
 	lastRotateTime time.Time // 上次轮转时间
@@ -43,18 +42,19 @@ func (f *fileRotateHandler) check() error {
 	if now.Before(nextRotateTime) {
 		return nil
 	}
-
+	dir, fileName := GetDirAndFileName(f.file, "log.log")
+	bakFileName := fmt.Sprintf("%sbak_%s_%s", dir, f.lastRotateTime.Format("2006010215"), fileName)
 	_ = f.fd.Close()
-	_ = os.Rename(f.fileName, "bak-"+nextRotateTime.Format("2006010215-")+f.fileName)
-	f.fd, _ = os.OpenFile(f.fileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+	_ = os.Rename(f.file, bakFileName)
+	f.fd, _ = os.OpenFile(f.file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 	f.lastRotateTime = nextRotateTime
 
-	go f.cleanOldFiles(now)
+	go f.cleanOldFiles(dir, now)
 	return nil
 }
 
-func (f *fileRotateHandler) cleanOldFiles(now time.Time) {
-	entries, err := os.ReadDir(f.dir)
+func (f *fileRotateHandler) cleanOldFiles(dir string, now time.Time) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
@@ -71,23 +71,23 @@ func (f *fileRotateHandler) cleanOldFiles(now time.Time) {
 		}
 
 		if info.ModTime().Before(maxAgeTime) {
-			_ = os.Remove(filepath.Join(f.dir, entry.Name()))
+			_ = os.Remove(filepath.Join(dir, entry.Name()))
 		}
 	}
 }
 
-func newFileRotateHandler(dir, fileName string, hoursInterval, maxAgeHours int) (*fileRotateHandler, error) {
+func newFileRotateHandler(file string, hoursInterval, maxAgeHours int) (*fileRotateHandler, error) {
+	dir, _file := GetDirAndFileName(file, "log.log")
 	handler := &fileRotateHandler{
-		dir:           dir,
-		fileName:      fileName,
+		file:          dir + _file,
 		hoursInterval: hoursInterval,
 		maxAgeHours:   maxAgeHours,
 	}
+
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
-
-	f, err := os.OpenFile(path.Join(dir, fileName), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+	f, err := os.OpenFile(handler.file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
 		return nil, err
 	}

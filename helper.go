@@ -1,6 +1,7 @@
 package log
 
 import (
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -28,10 +29,37 @@ func WhoCalledMe() (file string, line int, fn string) {
 	return "?", 0, "?"
 }
 
-func ShortFileName(filePath string) string {
-	idx := strings.LastIndex(filePath, "/")
+func ShortFileName(path string) string {
+	idx := strings.LastIndex(path, "/")
 	if idx > -1 {
-		return filePath[idx+1:]
+		return path[idx+1:]
 	}
-	return filePath
+	return path
+}
+
+// GetDirAndFileName 获取目录和文件名
+//
+// dir 目录，尾部带"/"
+//
+// fileName 文件名，如果路径中没有文件名，则使用defaultFileName
+func GetDirAndFileName(path string, defaultFileName string) (dir, fileName string) {
+	path = strings.ReplaceAll(path, `\`, "/")
+	if path == "" || path == "." || path == "./" {
+		return "./", defaultFileName
+	}
+	isDir := strings.HasSuffix(path, "/")
+	path = strings.TrimRight(path, "/")
+	if path == "" {
+		return "/", defaultFileName
+	}
+	if isDir || path == ".." {
+		return path + "/", defaultFileName
+	}
+	dir = filepath.Dir(path)
+	fileName = filepath.Base(path)
+	dir = strings.TrimRight(dir, "/") + "/"
+	if fileName == "" || fileName == "." {
+		fileName = defaultFileName
+	}
+	return
 }

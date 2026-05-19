@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,8 +45,10 @@ func (f *fileHandler) check() {
 		return
 	}
 	// backup
+	dir, fileName := GetDirAndFileName(f.fileName, "log.log")
+	bakFileName := fmt.Sprintf("%sbak_%s_%s", dir, time.Now().Format("20060102150405"), fileName)
 	_ = f.fd.Close()
-	os.Rename(f.fileName, fmt.Sprintf("%s.bak.%s", f.fileName, time.Now().Format("060102150405")))
+	_ = os.Rename(f.fileName, bakFileName)
 	f.fd, _ = os.OpenFile(f.fileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 	f.curSize.Store(0)
 	fi, err := f.fd.Stat()
@@ -58,11 +59,11 @@ func (f *fileHandler) check() {
 }
 
 func newFileHandler(file string, maxSize int64) (*fileHandler, error) {
-	dir := path.Dir(file)
+	dir, _file := GetDirAndFileName(file, "log.log")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+	f, err := os.OpenFile(dir+_file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +76,7 @@ func newFileHandler(file string, maxSize int64) (*fileHandler, error) {
 	}
 	handler := &fileHandler{
 		fd:       f,
-		fileName: file,
+		fileName: dir + _file,
 		maxSize:  maxSize,
 	}
 	handler.curSize.Store(stat.Size())

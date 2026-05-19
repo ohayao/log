@@ -28,16 +28,16 @@ func NewTerminalLogger(file *os.File, opts ...Option) *Logger {
 	return New(newTerminalHandler(file), opts...)
 }
 
-func NewFileLogger(file string, maxSize int64, opts ...Option) (*Logger, error) {
-	handler, err := newFileHandler(file, maxSize)
+func NewFileLogger(filePath string, maxSize int64, opts ...Option) (*Logger, error) {
+	handler, err := newFileHandler(filePath, maxSize)
 	if err != nil {
 		return nil, err
 	}
 	return New(handler, opts...), nil
 }
 
-func NewFileRotateLogger(dir, fileName string, maxAgeHours, hoursInterval int, opts ...Option) (*Logger, error) {
-	handler, err := newFileRotateHandler(dir, fileName, maxAgeHours, hoursInterval)
+func NewFileRotateLogger(filePath string, hoursInterval, maxAgeHours int, opts ...Option) (*Logger, error) {
+	handler, err := newFileRotateHandler(filePath, hoursInterval, maxAgeHours)
 	if err != nil {
 		return nil, err
 	}

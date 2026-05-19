@@ -44,7 +44,7 @@ func (l *Logger) withPrefix(lv int, buf *writePool) {
 	case FLAG_TIME_DATETIME:
 		buf.buffer = append(buf.buffer, now.Format("2006/01/02 15:04:05.000 ")...)
 	case FLAG_TIME_TIMESTAMP:
-		buf.buffer = append(buf.buffer, []byte(strconv.Itoa(int(now.UnixMilli())))...)
+		buf.buffer = append(buf.buffer, fmt.Appendf(nil, "%d ", now.UnixMilli())...)
 	case FLAG_TIME_NONE:
 		// none time
 	}
