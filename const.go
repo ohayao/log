@@ -1,5 +1,9 @@
 package log
 
+import (
+	"regexp"
+)
+
 type (
 	FLAG_TIME int
 
@@ -70,6 +74,10 @@ var (
 		LV_PANIC: {Name: "PNC", ShortName: "S", Color: []COLOR_ENUM{COLOR_FG_MAGENTA, COLOR_CTRL_BOLD}},
 		LV_FATAL: {Name: "FAT", ShortName: "F", Color: []COLOR_ENUM{COLOR_FG_MAGENTA, COLOR_CTRL_BOLD}},
 	}
+)
+
+var (
+	REG_PLACEHOLDER = regexp.MustCompile(`%(\[[1-9]\d*\])?([+\-# 0]*)(\d+|\*)?(\.(\d+|\*))?([a-zA-Z%])`)
 )
 
 type (

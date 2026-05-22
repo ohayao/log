@@ -6,6 +6,20 @@ import (
 	"strings"
 )
 
+var packagePrefix = getPackagePrefix()
+
+func getPackagePrefix() string {
+	var pcs [1]uintptr
+	runtime.Callers(1, pcs[:])
+	frames := runtime.CallersFrames(pcs[:])
+	frame, _ := frames.Next()
+	name := frame.Function
+	if idx := strings.LastIndex(name, "."); idx > -1 {
+		return name[:idx]
+	}
+	return name
+}
+
 func WhoCalledMe() (file string, line int, fn string) {
 	var pc uintptr
 	var ok bool
@@ -19,7 +33,7 @@ func WhoCalledMe() (file string, line int, fn string) {
 			continue
 		}
 		fn = fnc.Name()
-		if !strings.HasPrefix(fn, "github.com/ohayao/log") {
+		if !strings.HasPrefix(fn, packagePrefix) {
 			if idx := strings.LastIndex(fn, "."); idx > -1 {
 				fn = fn[idx+1:]
 			}

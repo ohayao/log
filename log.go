@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,7 +33,7 @@ func poolNew() *sync.Pool {
 	}
 }
 
-func (l *Logger) withPrefix(lv int, buf *writePool) {
+func (l *Logger) withPrefix(lv int, buf *writePool, skikCaller bool) {
 	now := time.Now()
 	switch l.flagTime {
 	case FLAG_TIME_DATE:
@@ -58,7 +57,7 @@ func (l *Logger) withPrefix(lv int, buf *writePool) {
 	}
 	buf.buffer = append(buf.buffer, 0x20)
 
-	if lv == LV_DEBUG || lv == LV_ERROR || lv == LV_FATAL || lv == LV_PANIC {
+	if !skikCaller && (lv == LV_DEBUG || lv == LV_ERROR || lv == LV_FATAL || lv == LV_PANIC) {
 		file, line, fn := WhoCalledMe()
 		file = ShortFileName(file)
 		if l.enableColor {
@@ -81,6 +80,9 @@ func (l *Logger) colorArgs(needSpace bool, args ...any) []any {
 }
 
 func (l *Logger) colorTypes(arg any, verb string) string {
+	if arg == nil {
+		return ColorWrap("nil", COLOR_FG_BLUE)
+	}
 	str := ifs(verb == "", fmt.Sprint(arg), fmt.Sprintf(verb, arg))
 	switch reflect.ValueOf(arg).Kind() {
 	case reflect.String:
@@ -100,8 +102,7 @@ func (l *Logger) colorTypes(arg any, verb string) string {
 }
 
 func (l *Logger) colorFormatArgs(format string, args ...any) string {
-	reg := regexp.MustCompile(`%(\[[1-9]\d*\])?([+\-# 0]*)(\d+|\*)?(\.(\d+|\*))?([a-zA-Z%])`)
-	matches := reg.FindAllStringSubmatchIndex(format, -1)
+	matches := REG_PLACEHOLDER.FindAllStringSubmatchIndex(format, -1)
 	var sb strings.Builder
 	var lastIndex, argIndex int = 0, 0
 	for _, match := range matches {
@@ -151,13 +152,13 @@ func (l *Logger) log(lv int, args ...any) {
 	buf := l.pool.Get().(*writePool)
 	buf.buffer = buf.buffer[:0]
 	defer l.pool.Put(buf)
-	l.withPrefix(lv, buf)
+	l.withPrefix(lv, buf, false)
 	if l.enableColor {
 		args = l.colorArgs(true, args...)
 	}
 	buf.buffer = append(buf.buffer, fmt.Sprint(args...)...)
+	buf.buffer = append(buf.buffer, 0x0a)
 	l.handler.Write(buf.buffer)
-	l.handler.Write([]byte("\n"))
 }
 
 func (l *Logger) logf(lv int, format string, args ...any) {
@@ -167,40 +168,57 @@ func (l *Logger) logf(lv int, format string, args ...any) {
 	buf := l.pool.Get().(*writePool)
 	buf.buffer = buf.buffer[:0]
 	defer l.pool.Put(buf)
-	l.withPrefix(lv, buf)
+	l.withPrefix(lv, buf, false)
 	if l.enableColor {
 		buf.buffer = append(buf.buffer, l.colorFormatArgs(format, args...)...)
 	} else {
 		buf.buffer = append(buf.buffer, fmt.Sprintf(format, args...)...)
 	}
+	buf.buffer = append(buf.buffer, 0x0a)
 	l.handler.Write(buf.buffer)
-	l.handler.Write([]byte("\n"))
+}
+
+func (l *Logger) logf_gorm(lv int, format string, args ...any) {
+	if lv < l.level {
+		return
+	}
+	buf := l.pool.Get().(*writePool)
+	buf.buffer = buf.buffer[:0]
+	defer l.pool.Put(buf)
+	l.withPrefix(lv, buf, true)
+	if l.enableColor {
+		buf.buffer = append(buf.buffer, l.colorFormatArgs(format, args...)...)
+	} else {
+		buf.buffer = append(buf.buffer, fmt.Sprintf(format, args...)...)
+	}
+	buf.buffer = append(buf.buffer, 0x0a)
+	l.handler.Write(buf.buffer)
 }
 
 func (l *Logger) Fatal(args ...any) {
 	l.log(LV_FATAL, args...)
-	os.Exit(0)
+	os.Exit(1)
 }
 func (l *Logger) Fatalf(format string, args ...any) {
 	l.logf(LV_FATAL, format, args...)
-	os.Exit(0)
+	os.Exit(1)
 }
 func (l *Logger) Fatalln(args ...any) {
 	l.log(LV_FATAL, args...)
-	os.Exit(0)
+	os.Exit(1)
 }
 
 func (l *Logger) Panic(args ...any) {
 	l.log(LV_PANIC, args...)
-	panic(struct{}{})
+	panic(fmt.Errorf(fmt.Sprint(args...)))
 }
 func (l *Logger) Panicf(format string, args ...any) {
 	l.logf(LV_PANIC, format, args...)
-	panic(struct{}{})
+	panic(fmt.Errorf(format, args...))
 }
 func (l *Logger) Panicln(args ...any) {
 	l.log(LV_PANIC, args...)
-	panic(struct{}{})
+	panic(fmt.Errorf(fmt.Sprint(args...)))
 }
 
 func (l *Logger) Print(args ...any) {

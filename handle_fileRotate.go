@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -31,16 +32,16 @@ func (f *fileRotateHandler) Close() (err error) {
 	return f.fd.Close()
 }
 
-func (f *fileRotateHandler) check() error {
+func (f *fileRotateHandler) check() {
 	now := time.Now()
 	if f.lastRotateTime.IsZero() {
 		f.lastRotateTime = now.Truncate(time.Hour)
-		return nil
+		return
 	}
 
 	nextRotateTime := f.lastRotateTime.Add(time.Duration(f.hoursInterval) * time.Hour)
 	if now.Before(nextRotateTime) {
-		return nil
+		return
 	}
 	dir, fileName := GetDirAndFileName(f.file, "log.log")
 	bakFileName := fmt.Sprintf("%sbak_%s_%s", dir, f.lastRotateTime.Format("2006010215"), fileName)
@@ -50,7 +51,6 @@ func (f *fileRotateHandler) check() error {
 	f.lastRotateTime = nextRotateTime
 
 	go f.cleanOldFiles(dir, now)
-	return nil
 }
 
 func (f *fileRotateHandler) cleanOldFiles(dir string, now time.Time) {
@@ -62,6 +62,9 @@ func (f *fileRotateHandler) cleanOldFiles(dir string, now time.Time) {
 	maxAgeTime := now.Add(-time.Duration(f.maxAgeHours) * time.Hour)
 	for _, entry := range entries {
 		if entry.IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(entry.Name(), "bak_") {
 			continue
 		}
 
