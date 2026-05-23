@@ -12,7 +12,6 @@ import (
 )
 
 var DB *gorm.DB
-var LG *log.Logger
 
 type Test01 struct {
 	ID   int64
@@ -20,16 +19,25 @@ type Test01 struct {
 }
 
 func init() {
-	LG, _ = log.NewFileLogger("./logx.log", 1000*1000*1,
+	opts := []log.Option{
 		log.WithColor(true),
 		log.WithShortName(true),
-		log.WithMinLevel(log.LV_DEBUG))
-	loger := log.NewGormLogger(LG, true, time.Millisecond*30)
+		log.WithMinLevel(log.LV_DEBUG),
+	}
+	logger, err := log.NewFileLogger("./output/log.log", 3000, opts...)
+	if err != nil {
+		panic(err)
+	}
+	log.DEFAULT = logger
+}
+
+func initDb() {
+	gormLogger := log.NewGormLogger(log.DEFAULT, true, time.Millisecond*50)
 	gormConfig := gorm.Config{
 		NamingStrategy: schema.NamingStrategy{
 			SingularTable: true,
 		},
-		Logger: loger.LogMode(logger.Info),
+		Logger: gormLogger.LogMode(logger.Info),
 	}
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?%s",
 		"root",
@@ -54,12 +62,13 @@ func init() {
 }
 
 func main() {
-	LG.Errorf("Test: %d", time.Now().Unix())
+	initDb()
+	log.Errorf("Test: %d", time.Now().Unix())
 	var list []Test01
 	if err := DB.Model(&Test01{}).Find(&list).Error; err != nil {
-		LG.Error(err)
+		log.Error(err)
 	} else {
-		LG.Infof("list lenght: %d", len(list))
+		log.Infof("list lenght: %d", len(list))
 	}
 	_ = DB.Model(&Test01{}).Where("names = ''").Find(&list).Error
 }
